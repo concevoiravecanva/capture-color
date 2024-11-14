@@ -1,42 +1,54 @@
-import { Button, Rows, Text } from "@canva/app-ui-kit";
-import { FormattedMessage, useIntl } from "react-intl";
-import * as styles from "styles/components.css";
-import { useAddElement } from "utils/use_add_element";
+import React, { useState } from 'react';
+import { Button, Text, Box } from '@canva/app-ui-kit';
+import { addNativeEventListener, colorFromHex } from '@canva/design';
 
-export const App = () => {
-  const addElement = useAddElement();
-  const onClick = () => {
-    addElement({
-      type: "text",
-      children: ["Hello world!"],
-    });
+export function App() {
+  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+
+  const activateEyedropper = async () => {
+    try {
+      const color = await new (window as any).EyeDropper().open();
+      setSelectedColor(color.sRGBHex);
+    } catch (error) {
+      console.error('Eyedropper error:', error);
+    }
   };
 
-  const intl = useIntl();
+  const copyToClipboard = () => {
+    if (selectedColor) {
+      navigator.clipboard.writeText(selectedColor);
+    }
+  };
 
   return (
-    <div className={styles.scrollContainer}>
-      <Rows spacing="2u">
-        <Text>
-          <FormattedMessage
-            defaultMessage="
-              To make changes to this app, edit the <code>src/app.tsx</code> file,
-              then close and reopen the app in the editor to preview the changes.
-            "
-            description="Instructions for how to make changes to the app. Do not translate <code>src/app.tsx</code>."
-            values={{
-              code: (chunks) => <code>{chunks}</code>,
-            }}
+    <Box padding="small">
+      <Text size="xlarge" weight="bold">Capture Color</Text>
+      <Button 
+        variant="primary" 
+        onClick={activateEyedropper}
+        iconLeft="colorPicker"
+      >
+        Activer la pipette
+      </Button>
+      {selectedColor && (
+        <Box paddingTop="small">
+          <Text>Couleur sélectionnée : {selectedColor}</Text>
+          <Box 
+            width="50px" 
+            height="50px" 
+            background={selectedColor} 
+            marginTop="small"
           />
-        </Text>
-        <Button variant="primary" onClick={onClick} stretch>
-          {intl.formatMessage({
-            defaultMessage: "Do something cool",
-            description:
-              "Button text to do something cool. Creates a new text element when pressed.",
-          })}
-        </Button>
-      </Rows>
-    </div>
+          <Button 
+            variant="secondary" 
+            onClick={copyToClipboard}
+            iconLeft="copy"
+            marginTop="small"
+          >
+            Copier le code
+          </Button>
+        </Box>
+      )}
+    </Box>
   );
-};
+}
