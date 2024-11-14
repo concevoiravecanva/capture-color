@@ -1,4 +1,5 @@
 import "dotenv/config";
+console.log("Environment variables:", process.env);
 
 import * as fs from "fs";
 import * as path from "path";
