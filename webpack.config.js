@@ -5,40 +5,19 @@ const { DefinePlugin, optimize } = require("webpack");
 const chalk = require("chalk");
 const { transform } = require("@formatjs/ts-transformer");
 
-/**
- *
- * @param {Object} [options]
- * @param {string} [options.appEntry=./src/index.tsx]
- * @param {string} [options.backendHost]
- * @param {Object} [options.devConfig]
- * @param {number} [options.devConfig.port]
- * @param {boolean} [options.devConfig.enableHmr]
- * @param {boolean} [options.devConfig.enableHttps]
- * @param {string} [options.devConfig.appOrigin]
- * @param {string} [options.devConfig.appId] - Deprecated in favour of appOrigin
- * @param {string} [options.devConfig.certFile]
- * @param {string} [options.devConfig.keyFile]
- * @returns {Object}
- */
 function buildConfig({
   devConfig,
   appEntry = path.join(__dirname, "src", "index.tsx"),
-  backendHost = process.env.CANVA_BACKEND_HOST,
+  backendHost = process.env.CANVA_BACKEND_HOST || 'http://localhost:8080',
 } = {}) {
   const mode = devConfig ? "development" : "production";
 
-  if (!backendHost) {
-    console.error(
-      chalk.redBright.bold("BACKEND_HOST is undefined."),
-      `Refer to "Customizing the backend host" in the README.md for more information.`,
-    );
-    process.exit(-1);
-  } else if (backendHost.includes("localhost") && mode === "production") {
-    console.error(
-      chalk.redBright.bold(
-        "BACKEND_HOST should not be set to localhost for production builds!",
+  if (backendHost.includes("localhost") && mode === "production") {
+    console.warn(
+      chalk.yellowBright.bold(
+        "Warning: BACKEND_HOST is set to localhost for a production build."
       ),
-      `Refer to "Customizing the backend host" in the README.md for more information.`,
+      "This may not be intended for production use."
     );
   }
 
@@ -118,7 +97,7 @@ function buildConfig({
           oneOf: [
             {
               issuer: /\.[jt]sx?$/,
-              resourceQuery: /react/, // *.svg?react
+              resourceQuery: /react/,
               use: ["@svgr/webpack", "url-loader"],
             },
             {
@@ -154,8 +133,6 @@ function buildConfig({
         new TerserPlugin({
           terserOptions: {
             format: {
-              // Turned on because emoji and regex is not minified properly using default
-              // https://github.com/facebook/create-react-app/issues/2488
               ascii_only: true,
             },
           },
@@ -171,32 +148,18 @@ function buildConfig({
       new DefinePlugin({
         BACKEND_HOST: JSON.stringify(backendHost),
       }),
-      // Apps can only submit a single JS file via the developer portal
       new optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
     ],
     ...buildDevConfig(devConfig),
   };
 }
 
-/**
- *
- * @param {Object} [options]
- * @param {number} [options.port]
- * @param {boolean} [options.enableHmr]
- * @param {boolean} [options.enableHttps]
- * @param {string} [options.appOrigin]
- * @param {string} [options.appId] - Deprecated in favour of appOrigin
- * @param {string} [options.certFile]
- * @param {string} [options.keyFile]
- * @returns {Object|null}
- */
 function buildDevConfig(options) {
   if (!options) {
     return null;
   }
 
-  const { port, enableHmr, appOrigin, appId, enableHttps, certFile, keyFile } =
-    options;
+  const { port, enableHmr, appOrigin, appId, enableHttps, certFile, keyFile } = options;
 
   let devServer = {
     server: enableHttps
@@ -233,11 +196,8 @@ function buildDevConfig(options) {
       },
     };
   } else if (enableHmr && appId) {
-    // Deprecated - App ID should not be used to configure HMR in the future and can be safely removed
-    // after a few months.
-
     console.warn(
-      "Enabling Hot Module Replacement (HMR) with an App ID is deprecated, please see the README.md on how to update.",
+      "Enabling Hot Module Replacement (HMR) with an App ID is deprecated, please see the README.md on how to update."
     );
 
     const appDomain = `app-${appId.toLowerCase().trim()}.canva-apps.com`;
@@ -253,7 +213,7 @@ function buildDevConfig(options) {
   } else {
     if (enableHmr && !appOrigin) {
       console.warn(
-        "Attempted to enable Hot Module Replacement (HMR) without configuring App Origin... Disabling HMR.",
+        "Attempted to enable Hot Module Replacement (HMR) without configuring App Origin... Disabling HMR."
       );
     }
     devServer.webSocketServer = false;
@@ -266,5 +226,4 @@ function buildDevConfig(options) {
 }
 
 module.exports = () => buildConfig();
-
 module.exports.buildConfig = buildConfig;
