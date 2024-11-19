@@ -1,21 +1,24 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import * as styles from "styles/components.css";
 import { Button, Rows, Text, Alert } from "@canva/app-ui-kit";
 import { addElementAtPoint } from "@canva/design";
 import { useFeatureSupport } from "utils/use_feature_support";
 
+const MAX_HISTORY = 5;
+const DEFAULT_COLOR = "#000000";
+
 export const App: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string>("#000000"); // Initialisation avec une couleur par défaut
+  const [selectedColor, setSelectedColor] = useState<string>(DEFAULT_COLOR);
   const [colorHistory, setColorHistory] = useState<string[]>([]);
   const [feedbackMessage, setFeedbackMessage] = useState<string | null>(null);
-  const [guideMessage, setGuideMessage] = useState<string | null>("Veuillez importer une image (formats acceptés : JPEG, PNG, GIF).");
+  const [guideMessage, setGuideMessage] = useState<string>("Veuillez importer une image (formats acceptés : JPEG, PNG, GIF).");
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const isSupported = useFeatureSupport();
   const isRequiredFeatureSupported = isSupported(addElementAtPoint);
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file) {
       const reader = new FileReader();
@@ -25,7 +28,7 @@ export const App: React.FC = () => {
       };
       reader.readAsDataURL(file);
     }
-  };
+  }, []);
 
   useEffect(() => {
     if (selectedImage && canvasRef.current) {
@@ -54,7 +57,7 @@ export const App: React.FC = () => {
         const imageData = ctx.getImageData(x, y, 1, 1);
         const [r, g, b] = imageData.data;
         const hexColor = `#${((1 << 24) + (r << 16) + (g << 8) + b).toString(16).slice(1)}`;
-        if (hexColor.length === 7) { // Vérification de la validité de la couleur
+        if (hexColor.length === 7) {
           setSelectedColor(hexColor);
           updateColorHistory(hexColor);
           setGuideMessage(null);
@@ -63,22 +66,22 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const updateColorHistory = (color: string) => {
+  const updateColorHistory = useCallback((color: string) => {
     if (color && color.startsWith('#') && color.length === 7) {
       setColorHistory(prevHistory => {
-        const newHistory = [color, ...prevHistory.filter(c => c !== color)].slice(0, 5);
+        const newHistory = [color, ...prevHistory.filter(c => c !== color)].slice(0, MAX_HISTORY);
         return newHistory;
       });
     }
-  };
+  }, []);
 
-  const copyToClipboard = () => {
+  const copyToClipboard = useCallback(() => {
     if (selectedColor) {
       navigator.clipboard.writeText(selectedColor);
       setFeedbackMessage("Code HEX copié !");
       setTimeout(() => setFeedbackMessage(null), 2000);
     }
-  };
+  }, [selectedColor]);
 
   const addColorToDesign = useCallback(async () => {
     if (selectedColor) {
@@ -89,21 +92,8 @@ export const App: React.FC = () => {
           left: 0,
           width: 100,
           height: 100,
-          viewBox: {
-            width: 100,
-            height: 100,
-            top: 0,
-            left: 0,
-          },
-          paths: [
-            {
-              d: "M 0 0 H 100 V 100 H 0 Z",
-              fill: {
-                color: selectedColor,
-                dropTarget: false,
-              },
-            },
-          ],
+          viewBox: { width: 100, height: 100, top: 0, left: 0 },
+          paths: [{ d: "M 0 0 H 100 V 100 H 0 Z", fill: { color: selectedColor, dropTarget: false } }],
         });
         setFeedbackMessage("Couleur ajoutée au design !");
       } catch (error) {
@@ -114,16 +104,35 @@ export const App: React.FC = () => {
     }
   }, [selectedColor]);
 
+  const renderColorHistory = useMemo(() => (
+    colorHistory.length > 0 && (
+      <Rows spacing="1u">
+        <Text>Historique des couleurs :</Text>
+        <div style={{ display: 'flex', gap: '10px' }}>
+          {colorHistory.map((color, index) => (
+            <div
+              key={index}
+              style={{
+                width: '30px',
+                height: '30px',
+                borderRadius: '5%',
+                backgroundColor: color,
+                cursor: 'pointer'
+              }}
+              onClick={() => setSelectedColor(color)}
+            />
+          ))}
+        </div>
+      </Rows>
+    )
+  ), [colorHistory]);
+
   return (
     <div className={styles.scrollContainer}>
       <Rows spacing="3u">
         <Text size="large">Sélecteur de Couleur</Text>
 
-        {guideMessage && (
-          <Alert tone="info">
-            {guideMessage}
-          </Alert>
-        )}
+        {guideMessage && <Alert tone="info">{guideMessage}</Alert>}
 
         <Button variant="primary" onClick={() => document.getElementById('fileInput')?.click()}>
           Importer une image
@@ -147,15 +156,7 @@ export const App: React.FC = () => {
         {selectedColor && (
           <Rows spacing="1u">
             <Text>Couleur sélectionnée : {selectedColor}</Text>
-            <div
-              style={{
-                width: '50px',
-                height: '50px',
-                backgroundColor: selectedColor,
-                border: '1px solid #ccc',
-                marginBottom: '10px'
-              }}
-            />
+            <div style={{ width: '50px', height: '50px', backgroundColor: selectedColor, border: '1px solid #ccc', marginBottom: '10px' }} />
           </Rows>
         )}
 
@@ -173,35 +174,12 @@ export const App: React.FC = () => {
           </Alert>
         )}
 
-        {feedbackMessage && (
-          <Text size="small" tone="success">{feedbackMessage}</Text>
-        )}
+        {feedbackMessage && <Text size="small" tone="success">{feedbackMessage}</Text>}
 
-        {colorHistory.length > 0 && (
-          <Rows spacing="1u">
-            <Text>Historique des couleurs :</Text>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              {colorHistory.map((color, index) => (
-                <div
-                  key={index}
-                  style={{
-                    width: '30px',
-                    height: '30px',
-                    borderRadius: '5%',
-                    backgroundColor: color,
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => setSelectedColor(color)}
-                />
-              ))}
-            </div>
-          </Rows>
-        )}
+        {renderColorHistory}
 
         {!selectedImage && !guideMessage && (
-          <Alert tone="warn">
-            Veuillez importer une image pour commencer.
-          </Alert>
+          <Alert tone="warn">Veuillez importer une image pour commencer.</Alert>
         )}
       </Rows>
     </div>

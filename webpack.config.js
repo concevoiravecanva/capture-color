@@ -1,9 +1,25 @@
 require("dotenv").config();
 const path = require("path");
 const TerserPlugin = require("terser-webpack-plugin");
-const { DefinePlugin, optimize } = require("webpack");
+const { DefinePlugin } = require("webpack");
 const chalk = require("chalk");
 const { transform } = require("@formatjs/ts-transformer");
+const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
+const MiniCssExtractPlugin = require('mini-css-extract-plugin');
+const CompressionPlugin = require('compression-webpack-plugin');
+
+function buildDevConfig(devConfig) {
+  if (!devConfig) {
+    return {};
+  }
+  return {
+    devtool: 'source-map',
+    devServer: {
+      hot: true,
+      port: parseInt(process.env.CANVA_FRONTEND_PORT || '8080', 10),
+    }
+  };
+}
 
 function buildConfig({
   devConfig,
@@ -11,8 +27,17 @@ function buildConfig({
   backendHost = process.env.CANVA_BACKEND_HOST || 'http://localhost:8080',
 } = {}) {
   const mode = devConfig ? "development" : "production";
+  const isProduction = mode === "production";
 
-  if (backendHost.includes("localhost") && mode === "production") {
+  if (!process.env.CANVA_FRONTEND_PORT) {
+    console.warn(
+      chalk.yellowBright.bold(
+        "Warning: CANVA_FRONTEND_PORT is not defined. Using default port 8080."
+      )
+    );
+  }
+
+  if (backendHost.includes("localhost") && isProduction) {
     console.warn(
       chalk.yellowBright.bold(
         "Warning: BACKEND_HOST is set to localhost for a production build."
@@ -35,7 +60,7 @@ function buildConfig({
         styles: path.resolve(__dirname, "styles"),
         src: path.resolve(__dirname, "src"),
       },
-      extensions: [".ts", ".tsx", ".js", ".css", ".svg", ".woff", ".woff2"],
+      extensions: [".ts", ".tsx", ".js", ".jsx", ".css", ".svg", ".woff", ".woff2"],
     },
     infrastructureLogging: {
       level: "none",
@@ -44,7 +69,6 @@ function buildConfig({
       rules: [
         {
           test: /\.tsx?$/,
-          exclude: /node_modules/,
           use: [
             {
               loader: "ts-loader",
@@ -62,12 +86,12 @@ function buildConfig({
               },
             },
           ],
+          exclude: /node_modules/,
         },
         {
           test: /\.css$/,
-          exclude: /node_modules/,
           use: [
-            "style-loader",
+            isProduction ? MiniCssExtractPlugin.loader : "style-loader",
             {
               loader: "css-loader",
               options: {
@@ -85,12 +109,17 @@ function buildConfig({
           ],
         },
         {
-          test: /\.(png|jpg|jpeg)$/i,
-          type: "asset/inline",
+          test: /\.(png|jpg|jpeg|gif)$/i,
+          type: "asset",
+          parser: {
+            dataUrlCondition: {
+              maxSize: 8 * 1024 // 8kb
+            }
+          }
         },
         {
-          test: /\.(woff|woff2)$/,
-          type: "asset/inline",
+          test: /\.(woff|woff2|eot|ttf|otf)$/i,
+          type: "asset/resource",
         },
         {
           test: /\.svg$/,
@@ -101,28 +130,12 @@ function buildConfig({
               use: ["@svgr/webpack", "url-loader"],
             },
             {
-              type: "asset/resource",
+              type: "asset",
               parser: {
                 dataUrlCondition: {
-                  maxSize: 200,
-                },
-              },
-            },
-          ],
-        },
-        {
-          test: /\.css$/,
-          include: /node_modules/,
-          use: [
-            "style-loader",
-            "css-loader",
-            {
-              loader: "postcss-loader",
-              options: {
-                postcssOptions: {
-                  plugins: [require("cssnano")({ preset: "default" })],
-                },
-              },
+                  maxSize: 4 * 1024 // 4kb
+                }
+              }
             },
           ],
         },
@@ -135,93 +148,58 @@ function buildConfig({
             format: {
               ascii_only: true,
             },
+            compress: {
+              drop_console: isProduction,
+              drop_debugger: isProduction,
+            },
           },
         }),
       ],
+      splitChunks: {
+        chunks: 'all',
+        minSize: 20000,
+        maxSize: 244000,
+        minChunks: 1,
+        maxAsyncRequests: 30,
+        maxInitialRequests: 30,
+        automaticNameDelimiter: '~',
+        enforceSizeThreshold: 50000,
+        cacheGroups: {
+          defaultVendors: {
+            test: /[\\/]node_modules[\\/]/,
+            priority: -10
+          },
+          default: {
+            minChunks: 2,
+            priority: -20,
+            reuseExistingChunk: true
+          }
+        }
+      },
     },
     output: {
-      filename: `[name].js`,
+      filename: isProduction ? '[name].[contenthash].js' : '[name].js',
       path: path.resolve(__dirname, "dist"),
       clean: true,
     },
     plugins: [
       new DefinePlugin({
         BACKEND_HOST: JSON.stringify(backendHost),
+        'process.env.NODE_ENV': JSON.stringify(mode),
+        'CANVA_FRONTEND_PORT': JSON.stringify(process.env.CANVA_FRONTEND_PORT || '8080')
       }),
-      new optimize.LimitChunkCountPlugin({ maxChunks: 1 }),
+      new MiniCssExtractPlugin({
+        filename: isProduction ? '[name].[contenthash].css' : '[name].css',
+      }),
+      ...(isProduction ? [
+        new CompressionPlugin(),
+        new BundleAnalyzerPlugin({
+          analyzerMode: 'static',
+          openAnalyzer: false,
+        })
+      ] : []),
     ],
     ...buildDevConfig(devConfig),
-  };
-}
-
-function buildDevConfig(options) {
-  if (!options) {
-    return null;
-  }
-
-  const { port, enableHmr, appOrigin, appId, enableHttps, certFile, keyFile } = options;
-
-  let devServer = {
-    server: enableHttps
-      ? {
-          type: "https",
-          options: {
-            cert: certFile,
-            key: keyFile,
-          },
-        }
-      : "http",
-    host: "localhost",
-    historyApiFallback: {
-      rewrites: [{ from: /^\/$/, to: "/app.js" }],
-    },
-    port,
-    client: {
-      logging: "verbose",
-    },
-    static: {
-      directory: path.resolve(__dirname, "assets"),
-      publicPath: "/assets",
-    },
-  };
-
-  if (enableHmr && appOrigin) {
-    devServer = {
-      ...devServer,
-      allowedHosts: new URL(appOrigin).hostname,
-      headers: {
-        "Access-Control-Allow-Origin": appOrigin,
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Private-Network": "true",
-      },
-    };
-  } else if (enableHmr && appId) {
-    console.warn(
-      "Enabling Hot Module Replacement (HMR) with an App ID is deprecated, please see the README.md on how to update."
-    );
-
-    const appDomain = `app-${appId.toLowerCase().trim()}.canva-apps.com`;
-    devServer = {
-      ...devServer,
-      allowedHosts: appDomain,
-      headers: {
-        "Access-Control-Allow-Origin": `https://${appDomain}`,
-        "Access-Control-Allow-Credentials": "true",
-        "Access-Control-Allow-Private-Network": "true",
-      },
-    };
-  } else {
-    if (enableHmr && !appOrigin) {
-      console.warn(
-        "Attempted to enable Hot Module Replacement (HMR) without configuring App Origin... Disabling HMR."
-      );
-    }
-    devServer.webSocketServer = false;
-  }
-
-  return {
-    devtool: "source-map",
-    devServer,
   };
 }
 
