@@ -7,6 +7,7 @@ const { transform } = require("@formatjs/ts-transformer");
 const BundleAnalyzerPlugin = require('webpack-bundle-analyzer').BundleAnalyzerPlugin;
 const MiniCssExtractPlugin = require('mini-css-extract-plugin');
 const CompressionPlugin = require('compression-webpack-plugin');
+const HtmlWebpackPlugin = require("html-webpack-plugin");
 
 function buildDevConfig(devConfig) {
   if (!devConfig) {
@@ -180,22 +181,26 @@ function buildConfig({
     output: {
       filename: isProduction ? '[name].[contenthash].js' : '[name].js',
       path: path.resolve(__dirname, "dist"),
-      clean: true,
+      clean:true,
     },
-    plugins: [
+    plugins:[
       new DefinePlugin({
-        BACKEND_HOST: JSON.stringify(backendHost),
+        BACKEND_HOST : JSON.stringify(backendHost),
         'process.env.NODE_ENV': JSON.stringify(mode),
         'CANVA_FRONTEND_PORT': JSON.stringify(process.env.CANVA_FRONTEND_PORT || '8080')
       }),
       new MiniCssExtractPlugin({
-        filename: isProduction ? '[name].[contenthash].css' : '[name].css',
+        filename:isProduction ? '[name].[contenthash].css' : '[name].css',
       }),
+      new HtmlWebpackPlugin({
+         template:path.join(__dirname, 'src', 'index.html'), // Chemin vers votre modèle HTML
+         filename:'index.html', // Nom du fichier généré
+       }),
       ...(isProduction ? [
         new CompressionPlugin(),
         new BundleAnalyzerPlugin({
-          analyzerMode: 'static',
-          openAnalyzer: false,
+          analyzerMode:'static',
+          openAnalyzer:false,
         })
       ] : []),
     ],
